@@ -32,6 +32,9 @@ app.get('/health', (req, res) => res.json({ ok: true, hora: new Date() }));
 
 app.use('/api/v1/contenedores', require('./routes/contenedores'));
 app.use('/api/v1/lecturas', require('./routes/lecturas'));
+app.use('/api/v1/auth', require('./routes/auth'));
+app.use('/api/v1/carritos', require('./routes/carritos'));
+app.use('/api/v1/turnos', require('./routes/turnos'));
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Ruta no encontrada' });
