@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
+const { liberarAlertasDeCarrito } = require('../services/alertas');
 const router = express.Router();
 
 router.get('/actual', requireAuth, async (req, res, next) => {
@@ -32,8 +33,8 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
     }
 
     const carrito = await db.query(
-      `SELECT id FROM carritos WHERE codigo = $1 AND activo = true`,
-      [codigo]
+      `SELECT id FROM carritos WHERE codigo = $1 AND organizacion_id = $2 AND activo = true`,
+      [codigo, req.usuario.organizacion_id]
     );
     if (carrito.rows.length === 0) {
       return res.status(404).json({ error: 'Carrito no encontrado' });
@@ -55,7 +56,12 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
       [req.usuario.id, carritoId]
     );
     res.status(201).json(rows[0]);
-  } catch (e) { next(e); }
+  } catch (e) {
+    if (e.code === '23505') {
+      return res.status(409).json({ error: 'Ya tienes un turno abierto o el carrito ya esta en uso' });
+    }
+    next(e);
+  }
 });
 
 router.patch('/:id/cerrar', requireAuth, async (req, res, next) => {
@@ -73,6 +79,7 @@ router.patch('/:id/cerrar', requireAuth, async (req, res, next) => {
     if (rows.length === 0) {
       return res.status(404).json({ error: 'Turno no encontrado, ya cerrado, o no te pertenece' });
     }
+    await liberarAlertasDeCarrito(rows[0].carrito_id);
     res.json(rows[0]);
   } catch (e) { next(e); }
 });
