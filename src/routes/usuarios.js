@@ -49,6 +49,42 @@ router.post('/', requireAuth, requireRol('admin'), async (req, res, next) => {
   }
 });
 
+router.post('/:id/restablecer-clave', requireAuth, requireRol('admin', 'superadmin'), async (req, res, next) => {
+  try {
+    if (!esId(req.params.id)) {
+      return res.status(400).json({ error: 'id invalido' });
+    }
+    if (req.params.id === String(req.usuario.id)) {
+      return res.status(400).json({ error: 'Para cambiar tu propia clave usa /auth/cambiar-clave' });
+    }
+
+    const esSuperadmin = req.usuario.rol === 'superadmin';
+    const { rows } = await db.query(
+      `SELECT id, nombre, correo, rol, activo FROM usuarios
+       WHERE id = $1 AND ($2::boolean OR organizacion_id = $3)`,
+      [req.params.id, esSuperadmin, req.usuario.organizacion_id]
+    );
+    const u = rows[0];
+    if (!u) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const permitidos = esSuperadmin
+      ? ['admin', 'supervisor', 'operario', 'particular']
+      : ['supervisor', 'operario'];
+    if (!permitidos.includes(u.rol)) {
+      return res.status(403).json({ error: 'No tienes permiso para restablecer la clave de ese usuario' });
+    }
+    if (!u.activo) {
+      return res.status(409).json({ error: 'El usuario esta desactivado' });
+    }
+
+    const clave = generarClave();
+    await db.query(`UPDATE usuarios SET clave_hash = $1 WHERE id = $2`, [await bcrypt.hash(clave, 10), u.id]);
+    res.json({ id: u.id, nombre: u.nombre, correo: u.correo, rol: u.rol, clave_temporal: clave });
+  } catch (e) { next(e); }
+});
+
 router.patch('/:id', requireAuth, requireRol('admin'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {

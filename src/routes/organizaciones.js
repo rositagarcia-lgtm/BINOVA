@@ -52,6 +52,21 @@ router.get('/', requireAuth, requireRol('superadmin'), async (req, res, next) =>
   } catch (e) { next(e); }
 });
 
+router.get('/:id/usuarios', requireAuth, requireRol('superadmin'), async (req, res, next) => {
+  try {
+    if (!esId(req.params.id)) {
+      return res.status(400).json({ error: 'id invalido' });
+    }
+    const { rows } = await db.query(
+      `SELECT id, nombre, correo, rol, activo, creado_en
+       FROM usuarios WHERE organizacion_id = $1
+       ORDER BY rol, nombre`,
+      [req.params.id]
+    );
+    res.json(rows);
+  } catch (e) { next(e); }
+});
+
 router.post('/:id/aprobar', requireAuth, requireRol('superadmin'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {
