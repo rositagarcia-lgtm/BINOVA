@@ -4,7 +4,7 @@ const { requireAuth, requireRol } = require('../middleware/auth');
 const { esId, texto } = require('../utils');
 const router = express.Router();
 
-const ROLES_ORG = ['admin', 'supervisor', 'operario', 'empleado'];
+const ROLES_ORG = ['admin', 'supervisor', 'operario'];
 const TIPOS = ['tapa_danada', 'sensor_sucio', 'acceso_bloqueado', 'otro'];
 
 router.post('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) => {

@@ -6,7 +6,7 @@ const {
 } = require('../utils');
 const router = express.Router();
 
-const ROLES_ORG = ['admin', 'supervisor', 'operario', 'empleado', 'particular'];
+const ROLES_ORG = ['admin', 'supervisor', 'operario', 'particular'];
 
 function validarUmbrales(ambar, rojo) {
   return Number.isInteger(ambar) && Number.isInteger(rojo) && ambar >= 0 && rojo <= 100 && rojo > ambar;

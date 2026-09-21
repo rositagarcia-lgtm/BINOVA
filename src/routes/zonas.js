@@ -4,7 +4,7 @@ const { requireAuth, requireRol } = require('../middleware/auth');
 const { texto } = require('../utils');
 const router = express.Router();
 
-const ROLES_ORG = ['admin', 'supervisor', 'operario', 'empleado', 'particular'];
+const ROLES_ORG = ['admin', 'supervisor', 'operario', 'particular'];
 
 router.get('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) => {
   try {

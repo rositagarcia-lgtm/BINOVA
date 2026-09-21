@@ -6,7 +6,7 @@ const { liberarAlertasDeCarrito } = require('../services/alertas');
 const { esId, normalizarCorreo, correoValido, texto, generarClave } = require('../utils');
 const router = express.Router();
 
-const ROLES_CREABLES = ['admin', 'supervisor', 'operario', 'empleado'];
+const ROLES_CREABLES = ['admin', 'supervisor', 'operario'];
 
 router.get('/', requireAuth, requireRol('admin', 'supervisor'), async (req, res, next) => {
   try {
@@ -29,7 +29,7 @@ router.post('/', requireAuth, requireRol('admin'), async (req, res, next) => {
       return res.status(400).json({ error: 'nombre y correo validos son obligatorios' });
     }
     if (!ROLES_CREABLES.includes(b.rol)) {
-      return res.status(400).json({ error: 'rol debe ser admin, supervisor, operario o empleado' });
+      return res.status(400).json({ error: 'rol debe ser admin, supervisor u operario' });
     }
 
     const clave = generarClave();
