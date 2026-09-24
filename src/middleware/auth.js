@@ -1,18 +1,19 @@
 const jwt = require('jsonwebtoken');
 const db = require('../db');
+const { noAutenticado, tokenInvalido, prohibido, orgInactiva } = require('../errors');
 
 async function requireAuth(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) {
-    return res.status(401).json({ error: 'Falta token de autenticacion' });
+    return next(noAutenticado('Falta token de autenticacion'));
   }
 
   let payload;
   try {
     payload = jwt.verify(token, process.env.JWT_SECRET, { algorithms: ['HS256'] });
   } catch (e) {
-    return res.status(401).json({ error: 'Token invalido o expirado' });
+    return next(tokenInvalido('Token invalido o expirado'));
   }
 
   try {
@@ -25,10 +26,10 @@ async function requireAuth(req, res, next) {
     );
     const u = rows[0];
     if (!u) {
-      return res.status(401).json({ error: 'Usuario no valido' });
+      return next(noAutenticado('Usuario no valido'));
     }
     if (u.rol !== 'superadmin' && u.org_estado !== 'activa') {
-      return res.status(403).json({ error: 'Organizacion no activa' });
+      return next(orgInactiva('Organizacion no activa'));
     }
     req.usuario = {
       id: u.id,
@@ -44,7 +45,7 @@ async function requireAuth(req, res, next) {
 function requireRol(...roles) {
   return (req, res, next) => {
     if (!roles.includes(req.usuario.rol)) {
-      return res.status(403).json({ error: 'No tienes permiso para esta accion' });
+      return next(prohibido('No tienes permiso para esta accion'));
     }
     next();
   };

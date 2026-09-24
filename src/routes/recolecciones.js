@@ -1,4 +1,5 @@
 const express = require('express');
+const { conflicto, noEncontrado, validacion } = require('../errors');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
 const { esId, texto, num, coordenadasValidas, fechaValida } = require('../utils');
@@ -13,10 +14,10 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
     const porId = b.contenedor_id !== undefined && b.contenedor_id !== null;
     const porCodigo = b.contenedor_codigo !== undefined && b.contenedor_codigo !== null;
     if (!porId && !porCodigo) {
-      return res.status(400).json({ error: 'Indica contenedor_id o contenedor_codigo' });
+      return next(validacion('Indica contenedor_id o contenedor_codigo'));
     }
     if (porId && !esId(b.contenedor_id)) {
-      return res.status(400).json({ error: 'contenedor_id invalido' });
+      return next(validacion('contenedor_id invalido'));
     }
 
     let lat = null;
@@ -25,7 +26,7 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
       lat = num(b.lat);
       lng = num(b.lng);
       if (!coordenadasValidas(lat, lng)) {
-        return res.status(400).json({ error: 'lat/lng invalidos' });
+        return next(validacion('lat/lng invalidos'));
       }
     }
 
@@ -36,7 +37,7 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
       [porId ? b.contenedor_id : texto(b.contenedor_codigo, 40), org]
     );
     if (contenedor.rows.length === 0) {
-      return res.status(404).json({ error: 'Contenedor no encontrado' });
+      return next(noEncontrado('Contenedor no encontrado'));
     }
     const c = contenedor.rows[0];
 
@@ -45,7 +46,7 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
       [req.usuario.id]
     );
     if (turno.rows.length === 0) {
-      return res.status(409).json({ error: 'Debes abrir un turno antes de registrar un vaciado' });
+      return next(conflicto('Debes abrir un turno antes de registrar un vaciado'));
     }
 
     const reciente = await db.query(
@@ -54,7 +55,7 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
       [c.id]
     );
     if (reciente.rows.length > 0) {
-      return res.status(409).json({ error: 'Este contenedor ya fue vaciado hace instantes' });
+      return next(conflicto('Este contenedor ya fue vaciado hace instantes'));
     }
 
     const resultado = await db.tx(async (cx) => {
@@ -94,10 +95,10 @@ router.get('/', requireAuth, requireRol('admin', 'supervisor', 'operario'), asyn
   try {
     const { contenedor_id: contenedorId, desde, hasta } = req.query;
     if (contenedorId !== undefined && !esId(contenedorId)) {
-      return res.status(400).json({ error: 'contenedor_id invalido' });
+      return next(validacion('contenedor_id invalido'));
     }
     if ((desde !== undefined && !fechaValida(desde)) || (hasta !== undefined && !fechaValida(hasta))) {
-      return res.status(400).json({ error: 'desde y hasta deben tener formato AAAA-MM-DD' });
+      return next(validacion('desde y hasta deben tener formato AAAA-MM-DD'));
     }
 
     const verTodas = ['admin', 'supervisor'].includes(req.usuario.rol);

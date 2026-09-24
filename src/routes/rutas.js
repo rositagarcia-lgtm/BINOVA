@@ -1,4 +1,5 @@
 const express = require('express');
+const { validacion } = require('../errors');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
 const { esId, num, entero, coordenadasValidas } = require('../utils');
@@ -16,22 +17,22 @@ router.get('/optima', requireAuth, requireRol('admin', 'supervisor', 'operario')
       ? ['rojo', 'ambar']
       : String(q.estados).split(',').map((s) => s.trim());
     if (estados.length === 0 || !estados.every((e) => ESTADOS.includes(e))) {
-      return res.status(400).json({ error: 'estados debe ser una lista de rojo, ambar y verde' });
+      return next(validacion('estados debe ser una lista de rojo, ambar y verde'));
     }
     const nivelMin = q.nivel_min === undefined ? 0 : entero(q.nivel_min, 0, 100);
     if (nivelMin === null) {
-      return res.status(400).json({ error: 'nivel_min debe ser un entero entre 0 y 100' });
+      return next(validacion('nivel_min debe ser un entero entre 0 y 100'));
     }
     const max = q.max === undefined ? 20 : entero(q.max, 1, 24);
     if (max === null) {
-      return res.status(400).json({ error: 'max debe ser un entero entre 1 y 24' });
+      return next(validacion('max debe ser un entero entre 1 y 24'));
     }
     const perfil = q.perfil === undefined ? 'walking' : q.perfil;
     if (!PERFILES.includes(perfil)) {
-      return res.status(400).json({ error: 'perfil debe ser walking, driving o cycling' });
+      return next(validacion('perfil debe ser walking, driving o cycling'));
     }
     if (q.zona_id !== undefined && !esId(q.zona_id)) {
-      return res.status(400).json({ error: 'zona_id invalido' });
+      return next(validacion('zona_id invalido'));
     }
 
     let origen = null;
@@ -39,7 +40,7 @@ router.get('/optima', requireAuth, requireRol('admin', 'supervisor', 'operario')
       const lat = num(q.lat);
       const lng = num(q.lng);
       if (!coordenadasValidas(lat, lng)) {
-        return res.status(400).json({ error: 'lat y lng deben enviarse juntos y ser validos' });
+        return next(validacion('lat y lng deben enviarse juntos y ser validos'));
       }
       origen = { lat, lng, tipo: 'parametro' };
     }

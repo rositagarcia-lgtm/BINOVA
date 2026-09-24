@@ -1,4 +1,5 @@
 const express = require('express');
+const { interno, noEncontrado, tokenInvalido, validacion } = require('../errors');
 const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
 const db = require('../db');
@@ -13,7 +14,7 @@ const limitePorDispositivo = rateLimit({
   limit: 30,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: 'Demasiadas lecturas de este dispositivo' },
+  message: { error: 'Demasiadas lecturas de este dispositivo', codigo: 'demasiadas_solicitudes' },
   keyGenerator: (req) => (typeof req.body?.device_id === 'string' && req.body.device_id
     ? 'dispositivo:' + req.body.device_id.slice(0, 80)
     : ipKeyGenerator(req.ip)),
@@ -33,20 +34,20 @@ router.post('/', limitePorRed, limitePorDispositivo, async (req, res, next) => {
     const { device_id, distancia_cm, bateria, rssi } = req.body ?? {};
 
     if (!device_id || distancia_cm === undefined) {
-      return res.status(400).json({ error: 'Faltan device_id o distancia_cm' });
+      return next(validacion('Faltan device_id o distancia_cm'));
     }
 
     const distancia = num(distancia_cm);
     if (!Number.isFinite(distancia) || distancia < 0) {
-      return res.status(400).json({ error: 'distancia_cm invalida' });
+      return next(validacion('distancia_cm invalida'));
     }
     const bat = enteroOpcional(bateria, 0, 100);
     if (bat.error) {
-      return res.status(400).json({ error: 'bateria debe estar entre 0 y 100' });
+      return next(validacion('bateria debe estar entre 0 y 100'));
     }
     const sen = enteroOpcional(rssi, -200, 0);
     if (sen.error) {
-      return res.status(400).json({ error: 'rssi debe estar entre -200 y 0' });
+      return next(validacion('rssi debe estar entre -200 y 0'));
     }
 
     const { rows } = await db.query(
@@ -58,19 +59,19 @@ router.post('/', limitePorRed, limitePorDispositivo, async (req, res, next) => {
       [device_id]
     );
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Dispositivo no registrado' });
+      return next(noEncontrado('Dispositivo no registrado'));
     }
 
     const c = rows[0];
 
     const enviado = (req.headers.authorization || '').replace('Bearer ', '');
     if (!c.token || c.token !== enviado) {
-      return res.status(401).json({ error: 'Token invalido' });
+      return next(tokenInvalido('Token invalido'));
     }
 
     const altura = Number(c.altura_cm);
     if (!Number.isFinite(altura) || altura <= 0) {
-      return res.status(500).json({ error: 'Contenedor con altura_cm invalida' });
+      return next(interno('Contenedor con altura_cm invalida'));
     }
 
     let nivel = Math.round(((altura - distancia) / altura) * 100);

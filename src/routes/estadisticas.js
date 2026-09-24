@@ -1,4 +1,5 @@
 const express = require('express');
+const { validacion } = require('../errors');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
 const { entero } = require('../utils');
@@ -78,7 +79,7 @@ router.get('/recolecciones-por-dia', requireAuth, requireRol('admin', 'superviso
   try {
     const dias = req.query.dias === undefined ? 14 : entero(req.query.dias, 1, 90);
     if (dias === null) {
-      return res.status(400).json({ error: 'dias debe ser un entero entre 1 y 90' });
+      return next(validacion('dias debe ser un entero entre 1 y 90'));
     }
     const { rows } = await db.query(
       `SELECT to_char((r.registrado_en AT TIME ZONE 'America/Lima')::date, 'YYYY-MM-DD') AS dia,

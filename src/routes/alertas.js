@@ -1,4 +1,5 @@
 const express = require('express');
+const { conflicto, noEncontrado, prohibido, validacion } = require('../errors');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
 const { esId } = require('../utils');
@@ -21,10 +22,10 @@ router.get('/', requireAuth, requireRol('admin', 'supervisor', 'operario'), asyn
   try {
     const { estado, tipo } = req.query;
     if (estado !== undefined && estado !== 'pendiente' && estado !== 'atendida') {
-      return res.status(400).json({ error: 'estado debe ser pendiente o atendida' });
+      return next(validacion('estado debe ser pendiente o atendida'));
     }
     if (tipo !== undefined && !TIPOS.includes(tipo)) {
-      return res.status(400).json({ error: 'tipo debe ser llenado_critico, bateria_baja o sin_reporte' });
+      return next(validacion('tipo debe ser llenado_critico, bateria_baja o sin_reporte'));
     }
 
     const esOperario = req.usuario.rol === 'operario';
@@ -71,11 +72,11 @@ router.get('/', requireAuth, requireRol('admin', 'supervisor', 'operario'), asyn
 router.patch('/:id/tomar', requireAuth, requireRol('operario'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {
-      return res.status(400).json({ error: 'id invalido' });
+      return next(validacion('id invalido'));
     }
     const carrito = await carritoDelTurno(req.usuario.id);
     if (!carrito) {
-      return res.status(409).json({ error: 'Debes abrir un turno para tomar una alerta' });
+      return next(conflicto('Debes abrir un turno para tomar una alerta'));
     }
 
     const { rows } = await db.query(
@@ -101,25 +102,25 @@ router.patch('/:id/tomar', requireAuth, requireRol('operario'), async (req, res,
     );
     const a = actual.rows[0];
     if (!a || a.atendida_en) {
-      return res.status(404).json({ error: 'Alerta no encontrada o ya atendida' });
+      return next(noEncontrado('Alerta no encontrada o ya atendida'));
     }
     if (a.carrito_id !== null) {
-      return res.status(409).json({ error: 'La alerta ya fue tomada por otro carrito' });
+      return next(conflicto('La alerta ya fue tomada por otro carrito'));
     }
-    res.status(403).json({ error: 'La alerta es de una zona que no atiende tu carrito' });
+    return next(prohibido('La alerta es de una zona que no atiende tu carrito'));
   } catch (e) { next(e); }
 });
 
 router.patch('/:id/soltar', requireAuth, requireRol('admin', 'supervisor', 'operario'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {
-      return res.status(400).json({ error: 'id invalido' });
+      return next(validacion('id invalido'));
     }
     let carritoId = null;
     if (req.usuario.rol === 'operario') {
       const carrito = await carritoDelTurno(req.usuario.id);
       if (!carrito) {
-        return res.status(409).json({ error: 'Debes tener un turno abierto' });
+        return next(conflicto('Debes tener un turno abierto'));
       }
       carritoId = carrito.id;
     }
@@ -134,7 +135,7 @@ router.patch('/:id/soltar', requireAuth, requireRol('admin', 'supervisor', 'oper
       [req.params.id, req.usuario.organizacion_id, carritoId]
     );
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Alerta no encontrada, sin asignar o no es de tu carrito' });
+      return next(noEncontrado('Alerta no encontrada, sin asignar o no es de tu carrito'));
     }
     res.json(rows[0]);
   } catch (e) { next(e); }
@@ -143,18 +144,18 @@ router.patch('/:id/soltar', requireAuth, requireRol('admin', 'supervisor', 'oper
 router.patch('/:id/asignar', requireAuth, requireRol('admin', 'supervisor'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {
-      return res.status(400).json({ error: 'id invalido' });
+      return next(validacion('id invalido'));
     }
     const carritoId = req.body?.carrito_id;
     if (!esId(carritoId)) {
-      return res.status(400).json({ error: 'carrito_id invalido' });
+      return next(validacion('carrito_id invalido'));
     }
     const carrito = await db.query(
       `SELECT id, codigo FROM carritos WHERE id = $1 AND organizacion_id = $2 AND activo = true`,
       [carritoId, req.usuario.organizacion_id]
     );
     if (carrito.rows.length === 0) {
-      return res.status(404).json({ error: 'Carrito no encontrado' });
+      return next(noEncontrado('Carrito no encontrado'));
     }
 
     const { rows } = await db.query(
@@ -165,7 +166,7 @@ router.patch('/:id/asignar', requireAuth, requireRol('admin', 'supervisor'), asy
       [carrito.rows[0].id, req.params.id, req.usuario.organizacion_id]
     );
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Alerta no encontrada o ya atendida' });
+      return next(noEncontrado('Alerta no encontrada o ya atendida'));
     }
     res.json({ ...rows[0], carrito_codigo: carrito.rows[0].codigo });
   } catch (e) { next(e); }
@@ -174,7 +175,7 @@ router.patch('/:id/asignar', requireAuth, requireRol('admin', 'supervisor'), asy
 router.patch('/:id/atender', requireAuth, requireRol('admin', 'supervisor'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {
-      return res.status(400).json({ error: 'id invalido' });
+      return next(validacion('id invalido'));
     }
     const { rows } = await db.query(
       `UPDATE alertas a SET atendida_en = now()
@@ -184,7 +185,7 @@ router.patch('/:id/atender', requireAuth, requireRol('admin', 'supervisor'), asy
       [req.params.id, req.usuario.organizacion_id]
     );
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Alerta no encontrada o ya atendida' });
+      return next(noEncontrado('Alerta no encontrada o ya atendida'));
     }
     res.json(rows[0]);
   } catch (e) { next(e); }

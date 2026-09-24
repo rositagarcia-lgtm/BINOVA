@@ -1,4 +1,5 @@
 const express = require('express');
+const { conflicto, noEncontrado, validacion } = require('../errors');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
 const { liberarAlertasDeCarrito } = require('../services/alertas');
@@ -21,7 +22,7 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
   try {
     const { codigo } = req.body;
     if (!codigo) {
-      return res.status(400).json({ error: 'Falta codigo del carrito' });
+      return next(validacion('Falta codigo del carrito'));
     }
 
     const abierto = await db.query(
@@ -29,7 +30,7 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
       [req.usuario.id]
     );
     if (abierto.rows.length > 0) {
-      return res.status(409).json({ error: 'Ya tienes un turno abierto' });
+      return next(conflicto('Ya tienes un turno abierto'));
     }
 
     const carrito = await db.query(
@@ -37,7 +38,7 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
       [codigo, req.usuario.organizacion_id]
     );
     if (carrito.rows.length === 0) {
-      return res.status(404).json({ error: 'Carrito no encontrado' });
+      return next(noEncontrado('Carrito no encontrado'));
     }
     const carritoId = carrito.rows[0].id;
 
@@ -46,7 +47,7 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
       [carritoId]
     );
     if (enUso.rows.length > 0) {
-      return res.status(409).json({ error: 'Ese carrito ya esta en uso' });
+      return next(conflicto('Ese carrito ya esta en uso'));
     }
 
     const { rows } = await db.query(
@@ -56,18 +57,13 @@ router.post('/', requireAuth, requireRol('operario'), async (req, res, next) => 
       [req.usuario.id, carritoId]
     );
     res.status(201).json(rows[0]);
-  } catch (e) {
-    if (e.code === '23505') {
-      return res.status(409).json({ error: 'Ya tienes un turno abierto o el carrito ya esta en uso' });
-    }
-    next(e);
-  }
+  } catch (e) { next(e); }
 });
 
 router.patch('/:id/cerrar', requireAuth, async (req, res, next) => {
   try {
     if (!/^\d+$/.test(req.params.id)) {
-      return res.status(400).json({ error: 'id invalido' });
+      return next(validacion('id invalido'));
     }
 
     const { rows } = await db.query(
@@ -77,7 +73,7 @@ router.patch('/:id/cerrar', requireAuth, async (req, res, next) => {
       [req.params.id, req.usuario.id]
     );
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Turno no encontrado, ya cerrado, o no te pertenece' });
+      return next(noEncontrado('Turno no encontrado, ya cerrado, o no te pertenece'));
     }
     await liberarAlertasDeCarrito(rows[0].carrito_id);
     res.json(rows[0]);
@@ -87,12 +83,12 @@ router.patch('/:id/cerrar', requireAuth, async (req, res, next) => {
 router.patch('/:id/posicion', requireAuth, async (req, res, next) => {
   try {
     if (!/^\d+$/.test(req.params.id)) {
-      return res.status(400).json({ error: 'id invalido' });
+      return next(validacion('id invalido'));
     }
     const lat = Number(req.body.lat);
     const lng = Number(req.body.lng);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return res.status(400).json({ error: 'lat/lng invalidos' });
+      return next(validacion('lat/lng invalidos'));
     }
 
     const turno = await db.query(
@@ -100,7 +96,7 @@ router.patch('/:id/posicion', requireAuth, async (req, res, next) => {
       [req.params.id, req.usuario.id]
     );
     if (turno.rows.length === 0) {
-      return res.status(404).json({ error: 'Turno no encontrado, cerrado, o no te pertenece' });
+      return next(noEncontrado('Turno no encontrado, cerrado, o no te pertenece'));
     }
 
     await db.query(

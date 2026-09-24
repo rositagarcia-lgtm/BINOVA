@@ -1,4 +1,5 @@
 const express = require('express');
+const { noEncontrado, validacion } = require('../errors');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
 const { esId, texto } = require('../utils');
@@ -14,7 +15,7 @@ router.post('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) =
 
     const tipo = typeof b.tipo === 'string' ? b.tipo.trim().toLowerCase().replace('ñ', 'n') : '';
     if (!TIPOS.includes(tipo)) {
-      return res.status(400).json({ error: 'tipo debe ser tapa_danada, sensor_sucio, acceso_bloqueado u otro' });
+      return next(validacion('tipo debe ser tapa_danada, sensor_sucio, acceso_bloqueado u otro'));
     }
 
     const descripcion = texto(b.descripcion, 1000);
@@ -22,7 +23,7 @@ router.post('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) =
     if (b.foto_url !== undefined && b.foto_url !== null) {
       fotoUrl = texto(b.foto_url, 500);
       if (!fotoUrl || !/^https?:\/\//i.test(fotoUrl)) {
-        return res.status(400).json({ error: 'foto_url debe ser un enlace http o https' });
+        return next(validacion('foto_url debe ser un enlace http o https'));
       }
     }
 
@@ -31,7 +32,7 @@ router.post('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) =
     const porCodigo = b.contenedor_codigo !== undefined && b.contenedor_codigo !== null;
     if (porId || porCodigo) {
       if (porId && !esId(b.contenedor_id)) {
-        return res.status(400).json({ error: 'contenedor_id invalido' });
+        return next(validacion('contenedor_id invalido'));
       }
       const contenedor = await db.query(
         porId
@@ -40,11 +41,11 @@ router.post('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) =
         [porId ? b.contenedor_id : texto(b.contenedor_codigo, 40), org]
       );
       if (contenedor.rows.length === 0) {
-        return res.status(404).json({ error: 'Contenedor no encontrado' });
+        return next(noEncontrado('Contenedor no encontrado'));
       }
       contenedorId = contenedor.rows[0].id;
     } else if (!descripcion) {
-      return res.status(400).json({ error: 'Indica el contenedor o describe la incidencia' });
+      return next(validacion('Indica el contenedor o describe la incidencia'));
     }
 
     const turno = await db.query(
@@ -67,7 +68,7 @@ router.get('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) =>
   try {
     const estado = req.query.estado;
     if (estado !== undefined && estado !== 'pendiente' && estado !== 'resuelta') {
-      return res.status(400).json({ error: 'estado debe ser pendiente o resuelta' });
+      return next(validacion('estado debe ser pendiente o resuelta'));
     }
 
     const verTodas = ['admin', 'supervisor'].includes(req.usuario.rol);
@@ -94,7 +95,7 @@ router.get('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) =>
 router.patch('/:id/resolver', requireAuth, requireRol('admin', 'supervisor'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {
-      return res.status(400).json({ error: 'id invalido' });
+      return next(validacion('id invalido'));
     }
     const { rows } = await db.query(
       `UPDATE incidencias SET resuelta_en = now(), resuelta_por = $1
@@ -103,7 +104,7 @@ router.patch('/:id/resolver', requireAuth, requireRol('admin', 'supervisor'), as
       [req.usuario.id, req.params.id, req.usuario.organizacion_id]
     );
     if (rows.length === 0) {
-      return res.status(404).json({ error: 'Incidencia no encontrada o ya resuelta' });
+      return next(noEncontrado('Incidencia no encontrada o ya resuelta'));
     }
     res.json(rows[0]);
   } catch (e) { next(e); }

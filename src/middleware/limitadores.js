@@ -6,7 +6,7 @@ function limitador(windowMs, limit, mensaje) {
     limit,
     standardHeaders: true,
     legacyHeaders: false,
-    message: { error: mensaje },
+    message: { error: mensaje, codigo: 'demasiadas_solicitudes' },
   });
 }
 

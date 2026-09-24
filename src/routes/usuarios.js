@@ -1,4 +1,5 @@
 const express = require('express');
+const { conflicto, noEncontrado, prohibido, validacion } = require('../errors');
 const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
@@ -26,10 +27,10 @@ router.post('/', requireAuth, requireRol('admin'), async (req, res, next) => {
     const nombre = texto(b.nombre, 120);
     const correo = normalizarCorreo(b.correo);
     if (!nombre || !correoValido(correo)) {
-      return res.status(400).json({ error: 'nombre y correo validos son obligatorios' });
+      return next(validacion('nombre y correo validos son obligatorios'));
     }
     if (!ROLES_CREABLES.includes(b.rol)) {
-      return res.status(400).json({ error: 'rol debe ser admin, supervisor u operario' });
+      return next(validacion('rol debe ser admin, supervisor u operario'));
     }
 
     const clave = generarClave();
@@ -41,21 +42,16 @@ router.post('/', requireAuth, requireRol('admin'), async (req, res, next) => {
       [nombre, correo, hash, b.rol, req.usuario.organizacion_id]
     );
     res.status(201).json({ ...rows[0], clave_temporal: clave });
-  } catch (e) {
-    if (e.code === '23505') {
-      return res.status(409).json({ error: 'Ya existe un usuario con ese correo' });
-    }
-    next(e);
-  }
+  } catch (e) { next(e); }
 });
 
 router.post('/:id/restablecer-clave', requireAuth, requireRol('admin', 'superadmin'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {
-      return res.status(400).json({ error: 'id invalido' });
+      return next(validacion('id invalido'));
     }
     if (req.params.id === String(req.usuario.id)) {
-      return res.status(400).json({ error: 'Para cambiar tu propia clave usa /auth/cambiar-clave' });
+      return next(validacion('Para cambiar tu propia clave usa /auth/cambiar-clave'));
     }
 
     const esSuperadmin = req.usuario.rol === 'superadmin';
@@ -66,17 +62,17 @@ router.post('/:id/restablecer-clave', requireAuth, requireRol('admin', 'superadm
     );
     const u = rows[0];
     if (!u) {
-      return res.status(404).json({ error: 'Usuario no encontrado' });
+      return next(noEncontrado('Usuario no encontrado'));
     }
 
     const permitidos = esSuperadmin
       ? ['admin', 'supervisor', 'operario', 'particular']
       : ['supervisor', 'operario'];
     if (!permitidos.includes(u.rol)) {
-      return res.status(403).json({ error: 'No tienes permiso para restablecer la clave de ese usuario' });
+      return next(prohibido('No tienes permiso para restablecer la clave de ese usuario'));
     }
     if (!u.activo) {
-      return res.status(409).json({ error: 'El usuario esta desactivado' });
+      return next(conflicto('El usuario esta desactivado'));
     }
 
     const clave = generarClave();
@@ -88,13 +84,13 @@ router.post('/:id/restablecer-clave', requireAuth, requireRol('admin', 'superadm
 router.patch('/:id', requireAuth, requireRol('admin'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {
-      return res.status(400).json({ error: 'id invalido' });
+      return next(validacion('id invalido'));
     }
     if (typeof req.body?.activo !== 'boolean') {
-      return res.status(400).json({ error: 'activo debe ser true o false' });
+      return next(validacion('activo debe ser true o false'));
     }
     if (req.params.id === String(req.usuario.id)) {
-      return res.status(400).json({ error: 'No puedes cambiar tu propio estado' });
+      return next(validacion('No puedes cambiar tu propio estado'));
     }
 
     const usuario = await db.tx(async (c) => {
@@ -117,7 +113,7 @@ router.patch('/:id', requireAuth, requireRol('admin'), async (req, res, next) =>
     });
 
     if (!usuario) {
-      return res.status(404).json({ error: 'Usuario no encontrado' });
+      return next(noEncontrado('Usuario no encontrado'));
     }
     res.json(usuario);
   } catch (e) { next(e); }

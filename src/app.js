@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
+const { fail, manejadorErrores } = require('./errors');
 const app = express();
 
 app.set('trust proxy', 1);
@@ -16,9 +17,7 @@ app.use(cors({
     if (!origin || permitidos.length === 0 || permitidos.includes(origin)) {
       return cb(null, true);
     }
-    const error = new Error('Origen no permitido: ' + origin);
-    error.status = 403;
-    cb(error);
+    cb(fail(403, 'Origen no permitido', 'cors'));
   },
 }));
 
@@ -28,6 +27,7 @@ app.use(rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path.startsWith('/api/v1/lecturas'),
+  message: { error: 'Demasiadas solicitudes, intenta de nuevo mas tarde', codigo: 'demasiadas_solicitudes' },
 }));
 
 app.get('/health', (req, res) => res.json({ ok: true, hora: new Date() }));
@@ -47,21 +47,9 @@ app.use('/api/v1/estadisticas', require('./routes/estadisticas'));
 app.use('/api/v1/rutas', require('./routes/rutas'));
 
 app.use((req, res) => {
-  res.status(404).json({ error: 'Ruta no encontrada' });
+  res.status(404).json({ error: 'Ruta no encontrada', codigo: 'ruta_no_encontrada' });
 });
 
-app.use((err, req, res, next) => {
-  if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({ error: 'JSON invalido' });
-  }
-  if (err.type === 'entity.too.large') {
-    return res.status(413).json({ error: 'Cuerpo demasiado grande' });
-  }
-  if (err.status === 403) {
-    return res.status(403).json({ error: 'Origen no permitido' });
-  }
-  console.error(err);
-  res.status(500).json({ error: 'Error interno del servidor' });
-});
+app.use(manejadorErrores);
 
 module.exports = app;

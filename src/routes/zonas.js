@@ -1,4 +1,5 @@
 const express = require('express');
+const { validacion } = require('../errors');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
 const { texto } = require('../utils');
@@ -20,7 +21,7 @@ router.post('/', requireAuth, requireRol('admin'), async (req, res, next) => {
   try {
     const nombre = texto(req.body?.nombre, 120);
     if (!nombre) {
-      return res.status(400).json({ error: 'Falta nombre' });
+      return next(validacion('Falta nombre'));
     }
     const { rows } = await db.query(
       `INSERT INTO zonas (nombre, descripcion, organizacion_id)
