@@ -76,7 +76,10 @@ router.post('/:id/restablecer-clave', requireAuth, requireRol('admin', 'superadm
     }
 
     const clave = generarClave();
-    await db.query(`UPDATE usuarios SET clave_hash = $1 WHERE id = $2`, [await bcrypt.hash(clave, 10), u.id]);
+    await db.tx(async (c) => {
+      await c.query(`UPDATE usuarios SET clave_hash = $1 WHERE id = $2`, [await bcrypt.hash(clave, 10), u.id]);
+      await c.query(`UPDATE invitaciones SET usada_en = now() WHERE usuario_id = $1 AND usada_en IS NULL`, [u.id]);
+    });
     res.json({ id: u.id, nombre: u.nombre, correo: u.correo, rol: u.rol, clave_temporal: clave });
   } catch (e) { next(e); }
 });

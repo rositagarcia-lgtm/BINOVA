@@ -28,6 +28,18 @@ router.post('/solicitud', limiteSolicitud, async (req, res, next) => {
       return next(validacion('nombre, contacto_nombre y contacto_correo validos son obligatorios'));
     }
 
+    const reciente = await db.query(
+      `SELECT 1 FROM organizaciones WHERE lower(contacto_correo) = $1 AND creado_en > now() - interval '24 hours'`,
+      [contactoCorreo]
+    );
+    if (reciente.rows.length > 0) {
+      return res.status(201).json({
+        ok: true,
+        mensaje: 'Solicitud recibida, te contactaremos pronto',
+        correo_enviado: false,
+      });
+    }
+
     await db.query(
       `INSERT INTO organizaciones (nombre, tipo, estado, contacto_nombre, contacto_correo, mensaje)
        VALUES ($1, 'empresa', 'pendiente', $2, $3, $4)`,

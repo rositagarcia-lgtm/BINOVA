@@ -25,6 +25,7 @@ async function main() {
 
   const clave = generarClave();
   await pool.query('UPDATE usuarios SET clave_hash = $1 WHERE id = $2', [await bcrypt.hash(clave, 10), rows[0].id]);
+  await pool.query('UPDATE invitaciones SET usada_en = now() WHERE usuario_id = $1 AND usada_en IS NULL', [rows[0].id]);
 
   console.log(`Clave restablecida para ${correo} (rol: ${rows[0].rol}).`);
   console.log(`Clave temporal: ${clave}`);

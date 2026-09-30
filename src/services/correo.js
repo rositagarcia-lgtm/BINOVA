@@ -83,12 +83,13 @@ function enviarAccesoListo({ nombre, correo, link }) {
   const html = envoltorio(
     'Tu acceso está listo',
     `<p>Hola ${esc(nombre)},</p>
-     <p>Aprobamos tu organización en BINOVA. Crea tu clave con este enlace (válido 72 horas):</p>
-     <p style="margin:24px 0;">
-       <a href="${esc(link)}" style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:10px 16px;">Crear mis credenciales</a>
+     <p>Aprobamos tu organización en BINOVA. Toca el botón para crear tu clave (el enlace vale 72 horas):</p>
+     <p style="margin:28px 0;text-align:center;">
+       <a href="${esc(link)}" style="display:inline-block;background:#6EA838;color:#fff;text-decoration:none;font-weight:600;padding:14px 32px;border-radius:10px;">Acceder</a>
      </p>
-     <p style="font-size:12px;color:#666;word-break:break-all;">Si el botón no funciona, copia este enlace:<br>${esc(link)}</p>
-     <p>Después entra con tu correo y la clave que elijas.</p>`,
+     <p style="font-size:12px;color:#888;text-align:center;">¿El botón no funciona? Copia y pega este enlace en tu navegador:<br>
+       <a href="${esc(link)}" style="color:#6EA838;word-break:break-all;">${esc(link)}</a>
+     </p>`,
   );
   return enviar({
     para: correo,

@@ -1,5 +1,5 @@
 const express = require('express');
-const { credenciales, orgInactiva, validacion, cuentaPendiente, invitacionInvalida, invitacionExpirada, invitacionUsada } = require('../errors');
+const { credenciales, orgInactiva, validacion, cuentaPendiente, invitacionInvalida, invitacionExpirada, invitacionUsada, conflicto } = require('../errors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
@@ -121,6 +121,9 @@ router.get('/invitacion', limiteInvitacion, async (req, res, next) => {
     if (inv.org_estado !== 'activa') {
       return next(orgInactiva('Organizacion no activa'));
     }
+    if (!inv.activo) {
+      return next(conflicto('Esta cuenta fue desactivada'));
+    }
     res.json({
       nombre: inv.nombre,
       correo: inv.correo,
@@ -148,10 +151,11 @@ router.post('/activar-invitacion', limiteInvitacion, async (req, res, next) => {
         throw invitacionExpirada('Este enlace expiro. Pide uno nuevo.');
       }
       if (inv.org_estado !== 'activa') throw orgInactiva('Organizacion no activa');
+      if (!inv.activo) throw conflicto('Esta cuenta fue desactivada');
 
       const hash = await bcrypt.hash(b.clave, 10);
       await c.query(
-        `UPDATE usuarios SET clave_hash = $1, activo = true WHERE id = $2`,
+        `UPDATE usuarios SET clave_hash = $1 WHERE id = $2`,
         [hash, inv.usuario_id]
       );
       await consumir(c, inv.id);
