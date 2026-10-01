@@ -99,6 +99,21 @@ function enviarAccesoListo({ nombre, correo, link }) {
   });
 }
 
+function enviarBienvenidaParticular({ nombre, correo }) {
+  const html = envoltorio(
+    'Bienvenido a BINOVA',
+    `<p>Hola ${esc(nombre)},</p>
+     <p>Tu cuenta quedó creada. Ya puedes iniciar sesión con tu correo y la clave que elegiste para ver tu contenedor, su nivel de llenado y las alertas.</p>
+     <p>Si vinculaste un tacho por código QR, lo verás apenas lo registres desde la app.</p>`,
+  );
+  return enviar({
+    para: correo,
+    nombrePara: nombre,
+    asunto: 'Bienvenido a BINOVA',
+    html,
+  });
+}
+
 function linkActivacion(token) {
   return `${urlApp()}/activar?token=${encodeURIComponent(token)}`;
 }
@@ -106,6 +121,7 @@ function linkActivacion(token) {
 module.exports = {
   enviarSolicitudRecibida,
   enviarAccesoListo,
+  enviarBienvenidaParticular,
   linkActivacion,
   urlApp,
 };

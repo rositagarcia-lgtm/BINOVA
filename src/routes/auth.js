@@ -7,6 +7,7 @@ const { requireAuth } = require('../middleware/auth');
 const { limitador } = require('../middleware/limitadores');
 const { normalizarCorreo, correoValido, claveValida, texto } = require('../utils');
 const { buscarPorToken, consumir } = require('../services/invitaciones');
+const { enviarBienvenidaParticular } = require('../services/correo');
 const router = express.Router();
 
 const HASH_FALSO = bcrypt.hashSync('clave-falsa-para-igualar-tiempos', 10);
@@ -98,7 +99,8 @@ router.post('/registro-particular', limiteRegistro, async (req, res, next) => {
       );
       return u.rows[0];
     });
-    res.status(201).json({ usuario });
+    const correoEnviado = await enviarBienvenidaParticular({ nombre, correo });
+    res.status(201).json({ usuario, correo_enviado: correoEnviado });
   } catch (e) { next(e); }
 });
 
