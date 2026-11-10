@@ -23,6 +23,9 @@ const cuentaPendiente = (m) => fail(403, m, 'cuenta_pendiente');
 const invitacionInvalida = (m) => fail(404, m, 'invitacion_invalida');
 const invitacionExpirada = (m) => fail(409, m, 'invitacion_expirada');
 const invitacionUsada = (m) => fail(409, m, 'invitacion_usada');
+const enlaceInvalido = (m) => fail(404, m, 'enlace_invalido');
+const enlaceExpirado = (m) => fail(409, m, 'enlace_expirado');
+const enlaceUsado = (m) => fail(409, m, 'enlace_usado');
 const interno = (m) => fail(500, m, 'interno');
 
 const UNICOS = {
@@ -122,6 +125,9 @@ module.exports = {
   invitacionInvalida,
   invitacionExpirada,
   invitacionUsada,
+  enlaceInvalido,
+  enlaceExpirado,
+  enlaceUsado,
   interno,
   mapearPostgres,
   manejadorErrores,

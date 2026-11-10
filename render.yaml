@@ -1,0 +1,28 @@
+# Configuracion de Render para la API (Blueprint). Los valores secretos se cargan en el panel de Render.
+services:
+  - type: web
+    name: binova-api
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: CORS_ORIGINS
+        sync: false
+      - key: APP_URL
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_FROM_EMAIL
+        sync: false
+      - key: BREVO_FROM_NAME
+        value: BINOVA
+      - key: MAPBOX_TOKEN
+        sync: false

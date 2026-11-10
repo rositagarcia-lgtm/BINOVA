@@ -1,3 +1,5 @@
 node_modules
 .env
-scripts
+scripts/_avast*
+scripts/avast*
+backups/

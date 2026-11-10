@@ -1,11 +1,12 @@
 const db = require('../db');
+const { enviarAlertaCritica } = require('./correo');
 
 const MINUTOS_SIN_REPORTE = 60;
 const BATERIA_BAJA = 20;
 const BATERIA_RECUPERADA = 30;
 
 async function abrirAlerta(contenedorId, tipo, nivel) {
-  await db.query(
+  const r = await db.query(
     `INSERT INTO alertas (contenedor_id, tipo, nivel, generada_en)
      SELECT $1::bigint, $2::text, $3::smallint, now()
      WHERE NOT EXISTS (
@@ -15,6 +16,28 @@ async function abrirAlerta(contenedorId, tipo, nivel) {
      ON CONFLICT DO NOTHING`,
     [contenedorId, tipo, nivel]
   );
+  return r.rowCount > 0;
+}
+
+// Avisa por correo a quienes administran el contenedor. Se llama una sola vez por alerta nueva.
+async function notificarLlenado(contenedorId, nivel) {
+  const { rows } = await db.query(
+    `SELECT u.nombre, u.correo, c.nombre AS contenedor, c.codigo
+     FROM contenedores c
+     JOIN usuarios u ON u.organizacion_id = c.organizacion_id
+     WHERE c.id = $1 AND u.activo = true AND u.rol IN ('admin', 'supervisor', 'particular')
+     ORDER BY u.id
+     LIMIT 20`,
+    [contenedorId]
+  );
+  for (const r of rows) {
+    await enviarAlertaCritica({
+      nombre: r.nombre,
+      correo: r.correo,
+      contenedor: r.contenedor === 'Sin asignar' ? r.codigo : r.contenedor,
+      nivel,
+    });
+  }
 }
 
 async function cerrarAlerta(contenedorId, tipo) {
@@ -27,7 +50,10 @@ async function cerrarAlerta(contenedorId, tipo) {
 
 async function evaluarLectura({ contenedorId, nivel, estado, bateria }) {
   if (estado === 'rojo') {
-    await abrirAlerta(contenedorId, 'llenado_critico', nivel);
+    const nueva = await abrirAlerta(contenedorId, 'llenado_critico', nivel);
+    if (nueva && process.env.NODE_ENV !== 'test') {
+      notificarLlenado(contenedorId, nivel).catch((e) => console.error('Aviso de llenado:', e.message));
+    }
   } else {
     await cerrarAlerta(contenedorId, 'llenado_critico');
   }

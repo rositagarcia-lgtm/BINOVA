@@ -1,0 +1,31 @@
+name: Mantenimiento
+
+# Tareas periodicas gratuitas con GitHub Actions.
+# Requiere los secretos del repositorio: DATABASE_URL y API_URL (por ejemplo https://binova-api.onrender.com).
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # mantiene despierta la API de Render y comprueba la base de datos
+    - cron: '23 * * * *'     # mantenimiento cada hora
+  workflow_dispatch:
+
+jobs:
+  mantener-despierta:
+    if: github.event_name != 'schedule' || github.event.schedule == '*/10 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Consultar /health/db
+        run: curl --fail --silent --show-error --max-time 90 --retry 2 "${{ secrets.API_URL }}/health/db"
+
+  mantenimiento:
+    if: github.event_name != 'schedule' || github.event.schedule == '23 * * * *'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run mantenimiento
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}

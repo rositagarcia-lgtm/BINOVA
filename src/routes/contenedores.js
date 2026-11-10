@@ -1,10 +1,11 @@
 const express = require('express');
-const { noEncontrado, validacion } = require('../errors');
+const { noEncontrado, prohibido, validacion } = require('../errors');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
 const {
-  esId, texto, num, entero, coordenadasValidas, generarCodigo, generarTokenDispositivo, sha256,
+  esId, texto, num, entero, coordenadasValidas, generarCodigo, generarTokenDispositivo, sha256, paginacion,
 } = require('../utils');
+const { auditar } = require('../services/auditoria');
 const router = express.Router();
 
 const ROLES_ORG = ['admin', 'supervisor', 'operario', 'particular'];
@@ -22,6 +23,7 @@ function leerUmbrales(b) {
 router.get('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) => {
   try {
     const { zona_id: zonaId, estado } = req.query;
+    const { limite, desde } = paginacion(req.query);
     if (zonaId !== undefined && !esId(zonaId)) {
       return next(validacion('zona_id invalido'));
     }
@@ -38,8 +40,9 @@ router.get('/', requireAuth, requireRol(...ROLES_ORG), async (req, res, next) =>
       WHERE c.activo = true AND c.organizacion_id = $1
         AND ($2::bigint IS NULL OR c.zona_id = $2::bigint)
         AND ($3::text IS NULL OR c.estado = $3)
-      ORDER BY c.nivel_actual DESC NULLS LAST
-    `, [req.usuario.organizacion_id, zonaId ?? null, estado ?? null]);
+      ORDER BY c.nivel_actual DESC NULLS LAST, c.id
+      LIMIT $4 OFFSET $5
+    `, [req.usuario.organizacion_id, zonaId ?? null, estado ?? null, limite, desde]);
     res.json(rows);
   } catch (e) { next(e); }
 });
@@ -99,13 +102,19 @@ router.get('/:id', requireAuth, requireRol(...ROLES_ORG), async (req, res, next)
   } catch (e) { next(e); }
 });
 
-router.patch('/:id', requireAuth, requireRol('admin'), async (req, res, next) => {
+router.patch('/:id', requireAuth, requireRol('admin', 'particular'), async (req, res, next) => {
   try {
     if (!esId(req.params.id)) {
       return next(validacion('id invalido'));
     }
     const b = req.body ?? {};
     const org = req.usuario.organizacion_id;
+    if (req.usuario.rol === 'particular') {
+      const extra = Object.keys(b).filter((k) => !['nombre', 'lat', 'lng'].includes(k));
+      if (extra.length > 0) {
+        return next(prohibido('Solo puedes cambiar el nombre y la ubicacion de tu contenedor'));
+      }
+    }
 
     const actual = await db.query(
       `SELECT id, umbral_ambar, umbral_rojo, device_id FROM contenedores WHERE id = $1 AND organizacion_id = $2`,
@@ -177,14 +186,16 @@ router.patch('/:id', requireAuth, requireRol('admin'), async (req, res, next) =>
       poner('device_id', deviceId);
       if (deviceId !== actual.rows[0].device_id) {
         tokenNuevo = deviceId ? generarTokenDispositivo() : null;
-        poner('token', tokenNuevo);
+        poner('token', null);
+        poner('token_hash', tokenNuevo ? sha256(tokenNuevo) : null);
       }
     }
     if (b.regenerar_token === true && tokenNuevo === null) {
       const deviceId = b.device_id === undefined ? actual.rows[0].device_id : texto(b.device_id, 80);
       if (!deviceId) return next(validacion('El contenedor no tiene device_id'));
       tokenNuevo = generarTokenDispositivo();
-      poner('token', tokenNuevo);
+      poner('token', null);
+      poner('token_hash', sha256(tokenNuevo));
     }
 
     if (columnas.length === 0) {
@@ -198,6 +209,11 @@ router.patch('/:id', requireAuth, requireRol('admin'), async (req, res, next) =>
        RETURNING id, codigo, nombre, zona_id, lat, lng, altura_cm, umbral_ambar, umbral_rojo, device_id, activo`,
       valores
     );
+    await auditar({
+      usuario: req.usuario,
+      accion: tokenNuevo ? 'token_dispositivo_regenerado' : 'contenedor_editado',
+      entidad: 'contenedor', entidadId: rows[0].id, detalle: { campos: Object.keys(b) },
+    });
     res.json(tokenNuevo ? { ...rows[0], token: tokenNuevo } : rows[0]);
   } catch (e) { next(e); }
 });
@@ -245,11 +261,12 @@ router.post('/', requireAuth, requireRol('admin'), async (req, res, next) => {
     const { rows } = await db.query(
       `INSERT INTO contenedores
          (codigo, nombre, zona_id, lat, lng, altura_cm, umbral_ambar, umbral_rojo,
-          device_id, token, organizacion_id)
+          device_id, token_hash, organizacion_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING id, codigo, nombre, zona_id, lat, lng, altura_cm, umbral_ambar, umbral_rojo, device_id`,
-      [codigo, nombre, zonaId, lat, lng, altura, ambar, rojo, deviceId, token, req.usuario.organizacion_id]
+      [codigo, nombre, zonaId, lat, lng, altura, ambar, rojo, deviceId, token ? sha256(token) : null, req.usuario.organizacion_id]
     );
+    await auditar({ usuario: req.usuario, accion: 'contenedor_creado', entidad: 'contenedor', entidadId: rows[0].id });
     res.status(201).json({ ...rows[0], token });
   } catch (e) { next(e); }
 });
@@ -276,11 +293,12 @@ router.post('/inventario', requireAuth, requireRol('superadmin'), async (req, re
     const codigoVinculacion = generarCodigo();
     const { rows } = await db.query(
       `INSERT INTO contenedores
-         (codigo, nombre, altura_cm, umbral_ambar, umbral_rojo, device_id, token, codigo_vinculacion_hash)
+         (codigo, nombre, altura_cm, umbral_ambar, umbral_rojo, device_id, token_hash, codigo_vinculacion_hash)
        VALUES ($1, 'Sin asignar', $2, $3, $4, $5, $6, $7)
        RETURNING id, codigo, device_id`,
-      [codigo, altura, ambar, rojo, deviceId, token, sha256(codigoVinculacion)]
+      [codigo, altura, ambar, rojo, deviceId, sha256(token), sha256(codigoVinculacion)]
     );
+    await auditar({ usuario: req.usuario, accion: 'inventario_creado', entidad: 'contenedor', entidadId: rows[0].id });
     res.status(201).json({ ...rows[0], token, codigo_vinculacion: codigoVinculacion });
   } catch (e) { next(e); }
 });
@@ -325,7 +343,39 @@ router.post('/vincular', requireAuth, requireRol('particular', 'admin', 'supervi
     if (rows.length === 0) {
       return next(noEncontrado('Codigo de vinculacion invalido o ya utilizado'));
     }
+    await auditar({ usuario: req.usuario, accion: 'contenedor_vinculado', entidad: 'contenedor', entidadId: rows[0].id });
     res.json(rows[0]);
+  } catch (e) { next(e); }
+});
+
+router.post('/:id/desvincular', requireAuth, requireRol('admin', 'particular'), async (req, res, next) => {
+  try {
+    if (!esId(req.params.id)) {
+      return next(validacion('id invalido'));
+    }
+    const codigoNuevo = generarCodigo();
+    const fila = await db.tx(async (c) => {
+      const { rows } = await c.query(
+        `UPDATE contenedores
+         SET organizacion_id = NULL, nombre = 'Sin asignar', lat = NULL, lng = NULL, zona_id = NULL,
+             codigo_vinculacion_hash = $3
+         WHERE id = $1 AND organizacion_id = $2
+         RETURNING id, codigo, device_id`,
+        [req.params.id, req.usuario.organizacion_id, sha256(codigoNuevo)]
+      );
+      if (rows.length === 0) return null;
+      await c.query(
+        `UPDATE alertas SET atendida_en = now(), carrito_id = NULL, tomada_en = NULL
+         WHERE contenedor_id = $1 AND atendida_en IS NULL`,
+        [rows[0].id]
+      );
+      return rows[0];
+    });
+    if (!fila) {
+      return next(noEncontrado('Contenedor no encontrado'));
+    }
+    await auditar({ usuario: req.usuario, accion: 'contenedor_desvinculado', entidad: 'contenedor', entidadId: fila.id });
+    res.json({ ...fila, codigo_vinculacion: codigoNuevo });
   } catch (e) { next(e); }
 });
 
@@ -363,17 +413,18 @@ router.post('/inventario/lote', requireAuth, requireRol('superadmin'), async (re
     }
 
     await db.query(
-      `INSERT INTO contenedores (codigo, nombre, altura_cm, umbral_ambar, umbral_rojo, device_id, token, codigo_vinculacion_hash)
+      `INSERT INTO contenedores (codigo, nombre, altura_cm, umbral_ambar, umbral_rojo, device_id, token_hash, codigo_vinculacion_hash)
        SELECT u.codigo, 'Sin asignar', $1::numeric, $2::smallint, $3::smallint, u.device_id, u.token, u.hash
        FROM unnest($4::text[], $5::text[], $6::text[], $7::text[]) AS u(codigo, device_id, token, hash)`,
       [
         altura, ambar, rojo,
         filas.map((f) => f.codigo),
         filas.map((f) => f.deviceId),
-        filas.map((f) => f.token),
+        filas.map((f) => sha256(f.token)),
         filas.map((f) => sha256(f.vinculacion)),
       ]
     );
+    await auditar({ usuario: req.usuario, accion: 'inventario_lote_creado', entidad: 'contenedor', detalle: { total: filas.length } });
     res.status(201).json({
       total: filas.length,
       dispositivos: filas.map((f) => ({

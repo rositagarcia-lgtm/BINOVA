@@ -3,7 +3,7 @@ const { interno, noEncontrado, tokenInvalido, validacion } = require('../errors'
 const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
 const db = require('../db');
-const { num } = require('../utils');
+const { num, sha256, hashIgual } = require('../utils');
 const { evaluarLectura } = require('../services/alertas');
 const { limitador } = require('../middleware/limitadores');
 const router = express.Router();
@@ -12,6 +12,7 @@ const limitePorRed = limitador(60 * 1000, 600, 'Demasiadas lecturas desde esta r
 const limitePorDispositivo = rateLimit({
   windowMs: 60 * 1000,
   limit: 30,
+  skip: () => process.env.NODE_ENV === 'test',
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: 'Demasiadas lecturas de este dispositivo', codigo: 'demasiadas_solicitudes' },
@@ -51,7 +52,7 @@ router.post('/', limitePorRed, limitePorDispositivo, async (req, res, next) => {
     }
 
     const { rows } = await db.query(
-      `SELECT c.id, c.altura_cm, c.umbral_ambar, c.umbral_rojo, c.token
+      `SELECT c.id, c.altura_cm, c.umbral_ambar, c.umbral_rojo, c.token, c.token_hash
        FROM contenedores c
        LEFT JOIN organizaciones o ON o.id = c.organizacion_id
        WHERE c.device_id = $1 AND c.activo = true
@@ -65,7 +66,11 @@ router.post('/', limitePorRed, limitePorDispositivo, async (req, res, next) => {
     const c = rows[0];
 
     const enviado = (req.headers.authorization || '').replace('Bearer ', '');
-    if (!c.token || c.token !== enviado) {
+    // Se compara contra el hash; el token en texto plano solo se acepta mientras dure la migracion.
+    const valido = c.token_hash
+      ? hashIgual(sha256(enviado), c.token_hash)
+      : Boolean(c.token) && hashIgual(c.token, enviado);
+    if (!valido) {
       return next(tokenInvalido('Token invalido'));
     }
 

@@ -114,6 +114,45 @@ function enviarBienvenidaParticular({ nombre, correo }) {
   });
 }
 
+function enviarRecuperacionClave({ nombre, correo, link }) {
+  const html = envoltorio(
+    'Restablece tu clave',
+    `<p>Hola ${esc(nombre)},</p>
+     <p>Recibimos una solicitud para restablecer tu clave de BINOVA. Toca el botón para elegir una nueva (el enlace vale 1 hora y solo se puede usar una vez):</p>
+     <p style="margin:28px 0;text-align:center;">
+       <a href="${esc(link)}" style="display:inline-block;background:#6EA838;color:#fff;text-decoration:none;font-weight:600;padding:14px 32px;border-radius:10px;">Crear nueva clave</a>
+     </p>
+     <p style="font-size:12px;color:#888;text-align:center;">¿El botón no funciona? Copia y pega este enlace en tu navegador:<br>
+       <a href="${esc(link)}" style="color:#6EA838;word-break:break-all;">${esc(link)}</a>
+     </p>`,
+  );
+  return enviar({
+    para: correo,
+    nombrePara: nombre,
+    asunto: 'Restablece tu clave de BINOVA',
+    html,
+  });
+}
+
+function enviarAlertaCritica({ nombre, correo, contenedor, nivel }) {
+  const html = envoltorio(
+    'Contenedor lleno',
+    `<p>Hola ${esc(nombre)},</p>
+     <p>El contenedor <strong>${esc(contenedor)}</strong> llegó al <strong>${esc(nivel)} %</strong> de su capacidad y necesita ser vaciado.</p>
+     <p>Revisa el detalle en la plataforma: <a href="${esc(urlApp())}" style="color:#6EA838;">${esc(urlApp())}</a></p>`,
+  );
+  return enviar({
+    para: correo,
+    nombrePara: nombre,
+    asunto: `Contenedor lleno: ${contenedor}`,
+    html,
+  });
+}
+
+function linkRecuperacion(token) {
+  return `${urlApp()}/restablecer?token=${encodeURIComponent(token)}`;
+}
+
 function linkActivacion(token) {
   return `${urlApp()}/activar?token=${encodeURIComponent(token)}`;
 }
@@ -122,6 +161,9 @@ module.exports = {
   enviarSolicitudRecibida,
   enviarAccesoListo,
   enviarBienvenidaParticular,
+  enviarRecuperacionClave,
+  enviarAlertaCritica,
+  linkRecuperacion,
   linkActivacion,
   urlApp,
 };

@@ -4,7 +4,8 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { requireAuth, requireRol } = require('../middleware/auth');
 const { limitador } = require('../middleware/limitadores');
-const { esId, normalizarCorreo, correoValido, texto, generarClave } = require('../utils');
+const { esId, normalizarCorreo, correoValido, texto, generarClave, paginacion } = require('../utils');
+const { auditar } = require('../services/auditoria');
 const { emitir } = require('../services/invitaciones');
 const { enviarSolicitudRecibida, enviarAccesoListo, linkActivacion } = require('../services/correo');
 const router = express.Router();
@@ -64,13 +65,14 @@ router.get('/', requireAuth, requireRol('superadmin'), async (req, res, next) =>
     if (estado !== undefined && !ESTADOS.includes(estado)) {
       return next(validacion('estado invalido'));
     }
+    const { limite, desde } = paginacion(req.query, { porDefecto: 200 });
     const { rows } = await db.query(
       `SELECT id, nombre, tipo, estado, contacto_nombre, contacto_correo, mensaje, creado_en, aprobado_en
        FROM organizaciones
        WHERE ($1::text IS NULL OR estado = $1)
-       ORDER BY creado_en DESC
-       LIMIT 200`,
-      [estado ?? null]
+       ORDER BY creado_en DESC, id DESC
+       LIMIT $2 OFFSET $3`,
+      [estado ?? null, limite, desde]
     );
     res.json(rows);
   } catch (e) { next(e); }
@@ -128,6 +130,7 @@ router.post('/:id/aprobar', requireAuth, requireRol('superadmin'), async (req, r
         token,
       };
     });
+    await auditar({ usuario: req.usuario, organizacionId: body.organizacion.id, accion: 'organizacion_aprobada', entidad: 'organizacion', entidadId: body.organizacion.id });
     const link = linkActivacion(body.token);
     const enviado = await enviarAccesoListo({
       nombre: body.admin.nombre,
@@ -168,6 +171,7 @@ router.patch('/:id/estado', requireAuth, requireRol('superadmin'), async (req, r
     if (rows.length === 0) {
       return next(conflicto('Organizacion no encontrada o transicion de estado no permitida'));
     }
+    await auditar({ usuario: req.usuario, organizacionId: rows[0].id, accion: 'organizacion_estado_cambiado', entidad: 'organizacion', entidadId: rows[0].id, detalle: { estado } });
     res.json(rows[0]);
   } catch (e) { next(e); }
 });
@@ -211,6 +215,7 @@ router.post('/:id/reenviar-invitacion', requireAuth, requireRol('superadmin'), a
     if (!enviado && !process.env.BREVO_API_KEY) {
       console.warn('Invitacion (sin Brevo). Link:', link);
     }
+    await auditar({ usuario: req.usuario, organizacionId: Number(req.params.id), accion: 'invitacion_reenviada', entidad: 'usuario', entidadId: u.id });
     res.json({
       ok: true,
       correo_enviado: enviado,

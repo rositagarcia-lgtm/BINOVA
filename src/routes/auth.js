@@ -1,5 +1,5 @@
 const express = require('express');
-const { credenciales, orgInactiva, validacion, cuentaPendiente, invitacionInvalida, invitacionExpirada, invitacionUsada, conflicto } = require('../errors');
+const { credenciales, orgInactiva, validacion, cuentaPendiente, invitacionInvalida, invitacionExpirada, invitacionUsada, enlaceInvalido, enlaceExpirado, enlaceUsado, conflicto } = require('../errors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const db = require('../db');
@@ -7,7 +7,9 @@ const { requireAuth } = require('../middleware/auth');
 const { limitador } = require('../middleware/limitadores');
 const { normalizarCorreo, correoValido, claveValida, texto } = require('../utils');
 const { buscarPorToken, consumir } = require('../services/invitaciones');
-const { enviarBienvenidaParticular } = require('../services/correo');
+const { enviarBienvenidaParticular, enviarRecuperacionClave, linkRecuperacion } = require('../services/correo');
+const { emitir: emitirRecuperacion, buscarPorToken: buscarRecuperacion, consumir: consumirRecuperacion } = require('../services/recuperacion');
+const { auditar } = require('../services/auditoria');
 const router = express.Router();
 
 const HASH_FALSO = bcrypt.hashSync('clave-falsa-para-igualar-tiempos', 10);
@@ -15,6 +17,7 @@ const limiteLogin = limitador(15 * 60 * 1000, 10, 'Demasiados intentos, intenta 
 const limiteRegistro = limitador(60 * 60 * 1000, 5, 'Demasiados registros, intenta de nuevo mas tarde');
 const limiteClave = limitador(15 * 60 * 1000, 10, 'Demasiados intentos, intenta de nuevo mas tarde');
 const limiteInvitacion = limitador(15 * 60 * 1000, 20, 'Demasiados intentos, intenta de nuevo mas tarde');
+const limiteOlvido = limitador(15 * 60 * 1000, 5, 'Demasiados intentos, intenta de nuevo mas tarde');
 
 router.post('/login', limiteLogin, async (req, res, next) => {
   try {
@@ -163,6 +166,89 @@ router.post('/activar-invitacion', limiteInvitacion, async (req, res, next) => {
       await consumir(c, inv.id);
     });
     res.json({ ok: true, mensaje: 'Clave creada. Ya puedes iniciar sesion.' });
+  } catch (e) { next(e); }
+});
+
+router.post('/olvide-clave', limiteOlvido, async (req, res, next) => {
+  try {
+    const correo = normalizarCorreo(req.body?.correo);
+    if (!correoValido(correo)) {
+      return next(validacion('Correo invalido'));
+    }
+    const { rows } = await db.query(
+      `SELECT u.id, u.nombre, u.correo, u.organizacion_id
+       FROM usuarios u
+       LEFT JOIN organizaciones o ON o.id = u.organizacion_id
+       WHERE lower(u.correo) = $1 AND u.activo = true
+         AND (u.rol = 'superadmin' OR o.estado = 'activa')
+         AND NOT EXISTS (SELECT 1 FROM invitaciones i
+                         WHERE i.usuario_id = u.id AND i.usada_en IS NULL AND i.expira_en > now())`,
+      [correo]
+    );
+    // Misma respuesta exista o no el correo, para no revelar quien tiene cuenta.
+    res.json({ ok: true, mensaje: 'Si el correo esta registrado, te enviaremos un enlace para restablecer tu clave' });
+
+    const u = rows[0];
+    if (!u) return;
+    try {
+      const token = await db.tx((c) => emitirRecuperacion(c, u.id));
+      const link = linkRecuperacion(token);
+      const enviado = await enviarRecuperacionClave({ nombre: u.nombre, correo: u.correo, link });
+      if (!enviado && !process.env.BREVO_API_KEY) {
+        console.warn('Recuperacion (sin Brevo). Link:', link);
+      }
+      await auditar({ usuario: u, accion: 'clave_recuperacion_solicitada', entidad: 'usuario', entidadId: u.id });
+    } catch (e) {
+      console.error('No se pudo emitir la recuperacion de clave:', e.message);
+    }
+  } catch (e) { next(e); }
+});
+
+router.post('/restablecer-clave', limiteInvitacion, async (req, res, next) => {
+  try {
+    const b = req.body ?? {};
+    const token = texto(b.token, 100);
+    if (!token) {
+      return next(validacion('Falta token'));
+    }
+    if (!claveValida(b.clave)) {
+      return next(validacion('La clave debe tener entre 8 y 72 caracteres'));
+    }
+
+    let r;
+    await db.tx(async (c) => {
+      r = await buscarRecuperacion(c, token, { bloquear: true });
+      if (!r) throw enlaceInvalido('Enlace invalido');
+      if (r.usada_en) throw enlaceUsado('Este enlace ya fue utilizado');
+      if (new Date(r.expira_en) <= new Date()) throw enlaceExpirado('Este enlace expiro. Pide uno nuevo.');
+      if (!r.activo) throw conflicto('Esta cuenta fue desactivada');
+      if (r.rol !== 'superadmin' && r.org_estado !== 'activa') throw orgInactiva('Organizacion no activa');
+
+      const hash = await bcrypt.hash(b.clave, 10);
+      await c.query(`UPDATE usuarios SET clave_hash = $1 WHERE id = $2`, [hash, r.usuario_id]);
+      await consumirRecuperacion(c, r.id);
+      await c.query(`UPDATE invitaciones SET usada_en = now() WHERE usuario_id = $1 AND usada_en IS NULL`, [r.usuario_id]);
+    });
+    await auditar({
+      usuario: { id: r.usuario_id, organizacion_id: r.organizacion_id },
+      accion: 'clave_restablecida', entidad: 'usuario', entidadId: r.usuario_id,
+    });
+    res.json({ ok: true, mensaje: 'Clave actualizada. Ya puedes iniciar sesion.' });
+  } catch (e) { next(e); }
+});
+
+router.patch('/me', requireAuth, async (req, res, next) => {
+  try {
+    const nombre = texto(req.body?.nombre, 120);
+    if (!nombre) {
+      return next(validacion('nombre invalido'));
+    }
+    const { rows } = await db.query(
+      `UPDATE usuarios SET nombre = $1 WHERE id = $2
+       RETURNING id, nombre, correo, rol, organizacion_id`,
+      [nombre, req.usuario.id]
+    );
+    res.json({ usuario: rows[0] });
   } catch (e) { next(e); }
 });
 

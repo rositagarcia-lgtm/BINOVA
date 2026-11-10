@@ -1,13 +1,18 @@
 {
   "name": "binova-api",
   "version": "1.0.0",
-  "description": "",
+  "description": "API de BINOVA: monitoreo IoT de contenedores de residuos",
   "main": "index.js",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "migrate": "node-pg-migrate -j sql --envPath .env",
-    "migrate:create": "node-pg-migrate create -j sql"
+    "migrate:create": "node-pg-migrate create -j sql",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "db:init": "node tools/db-init.js",
+    "db:snapshot": "node tools/snapshot-esquema.js",
+    "mantenimiento": "node tools/mantenimiento.js",
+    "respaldo": "node tools/respaldo.js"
   },
   "keywords": [],
   "author": "",
