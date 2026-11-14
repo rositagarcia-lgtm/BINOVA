@@ -11,6 +11,7 @@ const { enviarSolicitudRecibida, enviarAccesoListo, linkActivacion } = require('
 const router = express.Router();
 
 const limiteSolicitud = limitador(60 * 60 * 1000, 5, 'Demasiadas solicitudes, intenta de nuevo mas tarde');
+const limiteBusqueda = limitador(15 * 60 * 1000, 120, 'Demasiadas busquedas, intenta de nuevo mas tarde');
 
 const ESTADOS = ['pendiente', 'activa', 'suspendida', 'rechazada'];
 const TRANSICIONES = {
@@ -56,6 +57,23 @@ router.post('/solicitud', limiteSolicitud, async (req, res, next) => {
       mensaje: 'Solicitud recibida, te contactaremos pronto',
       correo_enviado: enviado,
     });
+  } catch (e) { next(e); }
+});
+
+// Publico: la app movil lo usa para que el operario elija su organizacion antes de iniciar sesion.
+// Solo expone id y nombre de organizaciones activas (no las cuentas de particulares).
+router.get('/publicas', limiteBusqueda, async (req, res, next) => {
+  try {
+    const q = texto(req.query.q, 80) ?? '';
+    const patron = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    const { rows } = await db.query(
+      `SELECT id, nombre FROM organizaciones
+       WHERE estado = 'activa' AND tipo <> 'individual' AND nombre ILIKE $1
+       ORDER BY nombre
+       LIMIT 30`,
+      [patron]
+    );
+    res.json(rows);
   } catch (e) { next(e); }
 });
 

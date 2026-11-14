@@ -263,6 +263,16 @@ describe('empresas, invitaciones y roles', () => {
     assert.equal((await api('POST', '/auth/activar-invitacion', { body: { token, clave: 'ClaveLuz1234' } })).status, 200);
     estado.tokenAdmin = await login('luz@colegio.test', 'ClaveLuz1234');
   });
+  test('la busqueda publica solo muestra empresas activas, sin particulares', async () => {
+    const todas = await api('GET', '/organizaciones/publicas');
+    assert.equal(todas.status, 200);
+    assert.deepEqual(todas.data.map((o) => o.nombre), ['Colegio Demo']);
+    assert.deepEqual(Object.keys(todas.data[0]).sort(), ['id', 'nombre']);
+    assert.equal((await api('GET', '/organizaciones/publicas?q=colegio')).data.length, 1);
+    assert.equal((await api('GET', '/organizaciones/publicas?q=COLE')).data.length, 1);
+    assert.equal((await api('GET', '/organizaciones/publicas?q=xyz')).data.length, 0);
+    assert.equal((await api('GET', '/organizaciones/publicas?q=%25')).data.length, 0);
+  });
   test('el admin crea un operario y los roles se respetan', async () => {
     const nuevo = await api('POST', '/usuarios', { token: estado.tokenAdmin, body: { nombre: 'Omar Diaz', correo: 'omar@colegio.test', rol: 'operario' } });
     assert.equal(nuevo.status, 201);

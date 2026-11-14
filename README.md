@@ -80,6 +80,8 @@ Las pruebas **vacían las tablas**: solo aceptan bases locales (o `TEST_PERMITIR
 | POST | `/cambiar-clave` | cualquiera | `{ clave_actual, clave_nueva }` |
 
 ### Organizaciones — `/organizaciones`
+
+`GET /organizaciones/publicas?q=` es público (120 consultas por 15 min por IP): devuelve `id` y `nombre` de las organizaciones activas (máx. 30, sin cuentas de particulares). La app móvil lo usa para buscar la organización.
 `POST /solicitud` (público) · `GET /`, `GET /:id/usuarios`, `POST /:id/aprobar`, `PATCH /:id/estado`, `POST /:id/reenviar-invitacion` (superadmin)
 
 ### Usuarios — `/usuarios`
