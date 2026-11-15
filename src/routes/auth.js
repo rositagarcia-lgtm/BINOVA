@@ -160,7 +160,7 @@ router.post('/activar-invitacion', limiteInvitacion, async (req, res, next) => {
 
       const hash = await bcrypt.hash(b.clave, 10);
       await c.query(
-        `UPDATE usuarios SET clave_hash = $1 WHERE id = $2`,
+        `UPDATE usuarios SET clave_hash = $1, clave_cambiada_en = now() WHERE id = $2`,
         [hash, inv.usuario_id]
       );
       await consumir(c, inv.id);
@@ -225,7 +225,7 @@ router.post('/restablecer-clave', limiteInvitacion, async (req, res, next) => {
       if (r.rol !== 'superadmin' && r.org_estado !== 'activa') throw orgInactiva('Organizacion no activa');
 
       const hash = await bcrypt.hash(b.clave, 10);
-      await c.query(`UPDATE usuarios SET clave_hash = $1 WHERE id = $2`, [hash, r.usuario_id]);
+      await c.query(`UPDATE usuarios SET clave_hash = $1, clave_cambiada_en = now() WHERE id = $2`, [hash, r.usuario_id]);
       await consumirRecuperacion(c, r.id);
       await c.query(`UPDATE invitaciones SET usada_en = now() WHERE usuario_id = $1 AND usada_en IS NULL`, [r.usuario_id]);
     });
@@ -279,8 +279,8 @@ router.post('/cambiar-clave', limiteClave, requireAuth, async (req, res, next) =
     }
 
     const hash = await bcrypt.hash(b.clave_nueva, 10);
-    await db.query(`UPDATE usuarios SET clave_hash = $1 WHERE id = $2`, [hash, req.usuario.id]);
-    res.json({ ok: true });
+    await db.query(`UPDATE usuarios SET clave_hash = $1, clave_cambiada_en = now() WHERE id = $2`, [hash, req.usuario.id]);
+    res.json({ ok: true, mensaje: 'Clave actualizada. Debes iniciar sesion de nuevo.' });
   } catch (e) { next(e); }
 });
 

@@ -18,7 +18,7 @@ async function requireAuth(req, res, next) {
 
   try {
     const { rows } = await db.query(
-      `SELECT u.id, u.nombre, u.correo, u.rol, u.organizacion_id, o.estado AS org_estado
+      `SELECT u.id, u.nombre, u.correo, u.rol, u.organizacion_id, u.clave_cambiada_en, o.estado AS org_estado
        FROM usuarios u
        LEFT JOIN organizaciones o ON o.id = u.organizacion_id
        WHERE u.id = $1 AND u.activo = true`,
@@ -27,6 +27,11 @@ async function requireAuth(req, res, next) {
     const u = rows[0];
     if (!u) {
       return next(noAutenticado('Usuario no valido'));
+    }
+    // Si la clave cambio despues de emitido este token (robo de sesion, clave filtrada,
+    // restablecimiento por un admin), el token queda invalido aunque no haya expirado.
+    if (u.clave_cambiada_en && payload.iat < Math.floor(new Date(u.clave_cambiada_en).getTime() / 1000)) {
+      return next(tokenInvalido('Token invalido o expirado'));
     }
     if (u.rol !== 'superadmin' && u.org_estado !== 'activa') {
       return next(orgInactiva('Organizacion no activa'));

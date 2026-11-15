@@ -6,9 +6,11 @@ const {
   esId, texto, num, entero, coordenadasValidas, generarCodigo, generarTokenDispositivo, sha256, paginacion,
 } = require('../utils');
 const { auditar } = require('../services/auditoria');
+const { limitador } = require('../middleware/limitadores');
 const router = express.Router();
 
 const ROLES_ORG = ['admin', 'supervisor', 'operario', 'particular'];
+const limiteVinculacion = limitador(15 * 60 * 1000, 20, 'Demasiados intentos de vinculacion, intenta de nuevo mas tarde');
 
 function validarUmbrales(ambar, rojo) {
   return Number.isInteger(ambar) && Number.isInteger(rojo) && ambar >= 0 && rojo <= 100 && rojo > ambar;
@@ -303,7 +305,7 @@ router.post('/inventario', requireAuth, requireRol('superadmin'), async (req, re
   } catch (e) { next(e); }
 });
 
-router.post('/vincular', requireAuth, requireRol('particular', 'admin', 'supervisor', 'operario'), async (req, res, next) => {
+router.post('/vincular', limiteVinculacion, requireAuth, requireRol('particular', 'admin', 'supervisor', 'operario'), async (req, res, next) => {
   try {
     const b = req.body ?? {};
     const codigoVinculacion = texto(b.codigo_vinculacion, 100);
